@@ -1,36 +1,84 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ALI Coffee Chats
 
-## Getting Started
+A small scheduling app for the ALI eboard. Board members paint their weekly availability, students pick any open time, and the app assigns the least-booked available member and puts a Google Calendar event on that member's calendar with the student as a guest. Google emails both invites.
 
-First, run the development server:
+## How it works
+
+| Who | Where | What they do |
+| --- | --- | --- |
+| Students | `/` | See merged availability for the booking window (currently Sept 7–19, 2026), pick a 30-minute slot, enter name + email. No login. |
+| Eboard | `/member` | Sign in with Google (allow-listed emails only). Set name, role, default meeting spot or Zoom link. Paint a weekly grid; add per-date overrides; see and cancel upcoming chats. |
+| Admin | `/admin` | Add or remove eboard emails, see all upcoming chats. |
+
+Matching: at booking time the app finds every member free at that slot (weekly rule, minus per-date blocks, minus existing bookings, minus busy time on their Google Calendar) and picks the one with the fewest upcoming chats. Ties are random.
+
+Rules live in [`src/lib/config.ts`](src/lib/config.ts): timezone (US Eastern), slot length, grid hours, the booking window dates (`BOOKING_WINDOW_START` / `BOOKING_WINDOW_END`), lead time, one active booking per student email. Change the two window dates to run another round.
+
+## Local development
 
 ```bash
+npm install
+cp .env.example .env.local   # fill in AUTH_SECRET (openssl rand -base64 32) and ADMIN_EMAIL
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Without `DATABASE_URL` the app uses an embedded Postgres (PGlite) stored in `.data/`. Migrations run automatically on first request.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+To try the eboard side before Google OAuth is configured, set `DEV_LOGIN=true` in `.env.local`. The login page then shows a local-only form that signs you in as any allow-listed email. This is ignored in production. Bookings made this way record a calendar error instead of creating a real event.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Google Cloud setup (required for real sign-in and calendar invites)
 
-## Learn More
+1. Go to https://console.cloud.google.com and create a project (e.g. "ALI Coffee Chats").
+2. **APIs & Services → Library**: enable **Google Calendar API**.
+3. **APIs & Services → OAuth consent screen**: External, fill in app name and support email. Add scopes:
+   - `.../auth/userinfo.email`, `.../auth/userinfo.profile`, `openid`
+   - `https://www.googleapis.com/auth/calendar.events`
+   - `https://www.googleapis.com/auth/calendar.freebusy`
+   
+   While the app is in **Testing** mode, add every eboard member's Gmail/Workspace address under **Test users** (up to 100). Only they can sign in. Publishing the app for general use requires Google verification because the calendar scope is sensitive; for a club, testing mode is enough.
+4. **APIs & Services → Credentials → Create credentials → OAuth client ID**, type **Web application**. Authorized redirect URIs:
+   - `http://localhost:3000/api/auth/callback/google`
+   - `https://YOUR-DOMAIN/api/auth/callback/google`
+5. Copy the client ID and secret into `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET`.
 
-To learn more about Next.js, take a look at the following resources:
+Members grant calendar access the first time they sign in. The refresh token is stored so events can be created later without them being online. If a member revokes access, they see a red banner on `/member` asking them to sign in again.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Deploying (Vercel + hosted Postgres)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. Create a free Postgres database on [Neon](https://neon.tech) or [Supabase](https://supabase.com) and copy the connection string.
+2. Push this folder to GitHub and import it in [Vercel](https://vercel.com).
+3. Set environment variables in Vercel:
+   - `AUTH_SECRET`
+   - `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`
+   - `ADMIN_EMAIL`
+   - `DATABASE_URL`
+   - `AUTH_URL` = your deployed origin, e.g. `https://ali-chats.vercel.app`
+4. Add the production redirect URI to the Google OAuth client (step 4 above).
+5. Deploy. Migrations in `drizzle/` run automatically on first request.
 
-## Deploy on Vercel
+Do not set `DEV_LOGIN` in production.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Changing the schema
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Edit `src/db/schema.ts`, then:
+
+```bash
+npx drizzle-kit generate
+```
+
+This writes a new SQL file into `drizzle/`, which is applied on next startup.
+
+## Project layout
+
+```
+src/app/page.tsx                 student booking page
+src/app/book/confirmed/[id]      confirmation page
+src/app/member                   eboard dashboard + login
+src/app/admin                    admin page
+src/app/actions/*.ts             server actions (book, member, admin)
+src/lib/availability.ts          open-slot computation and matching inputs
+src/lib/google.ts                Google Calendar API (token refresh, free/busy, events)
+src/lib/config.ts                club settings
+src/db/schema.ts                 database tables
+src/auth.ts                      Auth.js config (Google, allow-list, dev login)
+```
