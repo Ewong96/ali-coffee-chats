@@ -4,12 +4,14 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { cancelBooking } from "@/app/actions/member";
 import { fmtDateTime, tzAbbrev } from "@/lib/time";
+import { yearLabel } from "@/lib/config";
 
 export type ChatRow = {
   id: string;
   studentName: string;
   studentEmail: string;
   studentNotes: string;
+  studentYear: string;
   startsAt: string;
   mode: "in_person" | "virtual";
   location: string;
@@ -38,7 +40,7 @@ export default function UpcomingChats({ bookings, showHost = false }: { bookings
                   {fmtDateTime(d)} <span className="text-stone-400">{tzAbbrev(d)}</span>
                 </div>
                 <div className="text-sm text-stone-700">
-                  {b.studentName} · <a className="underline decoration-stone-300" href={`mailto:${b.studentEmail}`}>{b.studentEmail}</a>
+                  {b.studentName}{b.studentYear && <span className="text-stone-500"> · {yearLabel(b.studentYear)}</span>} · <a className="underline decoration-stone-300" href={`mailto:${b.studentEmail}`}>{b.studentEmail}</a>
                   {showHost && b.hostName && <span className="text-stone-500"> · with {b.hostName}</span>}
                 </div>
                 <div className="text-sm text-stone-500">

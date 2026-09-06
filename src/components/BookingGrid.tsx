@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createBooking } from "@/app/actions/book";
-import type { MeetingMode } from "@/lib/config";
+import type { ClassYear, MeetingMode } from "@/lib/config";
 import { minutesLabel, slotRangeLabel } from "@/lib/time";
 
 export type DayInfo = { dateKey: string; weekday: string; date: string };
@@ -12,7 +12,7 @@ export type SlotInfo = { iso: string; dateKey: string; startMin: number; modes: 
 const MODE_LABEL: Record<MeetingMode, string> = { in_person: "In person", virtual: "Virtual" };
 const MODE_ICON: Record<MeetingMode, string> = { in_person: "📍", virtual: "💻" };
 
-export default function BookingGrid({ days, slots, tz, openingNote }: { days: DayInfo[]; slots: SlotInfo[]; tz: string; openingNote?: string }) {
+export default function BookingGrid({ days, slots, tz, year, openingNote }: { days: DayInfo[]; slots: SlotInfo[]; tz: string; year: ClassYear; openingNote?: string }) {
   const weeks = useMemo(() => {
     const out: DayInfo[][] = [];
     for (let i = 0; i < days.length; i += 7) out.push(days.slice(i, i + 7));
@@ -35,8 +35,8 @@ export default function BookingGrid({ days, slots, tz, openingNote }: { days: Da
   if (!slots.length) {
     return (
       <div className="card p-10 text-center text-stone-600">
-        <p className="text-lg font-medium text-stone-800">No openings right now</p>
-        <p className="mt-1 text-sm">The eboard hasn&apos;t posted availability yet. Check back soon!</p>
+        <p className="text-lg font-medium text-stone-800">No openings for your year right now</p>
+        <p className="mt-1 text-sm">The board members who chat with your class year haven&apos;t posted availability yet. Check back soon!</p>
       </div>
     );
   }
@@ -88,12 +88,12 @@ export default function BookingGrid({ days, slots, tz, openingNote }: { days: Da
         })}
       </div>
 
-      {selected && <BookingModal slot={selected.slot} day={selected.day} tz={tz} onClose={() => setSelected(null)} />}
+      {selected && <BookingModal slot={selected.slot} day={selected.day} tz={tz} year={year} onClose={() => setSelected(null)} />}
     </div>
   );
 }
 
-function BookingModal({ slot, day, tz, onClose }: { slot: SlotInfo; day: DayInfo; tz: string; onClose: () => void }) {
+function BookingModal({ slot, day, tz, year, onClose }: { slot: SlotInfo; day: DayInfo; tz: string; year: ClassYear; onClose: () => void }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -107,7 +107,7 @@ function BookingModal({ slot, day, tz, onClose }: { slot: SlotInfo; day: DayInfo
     e.preventDefault();
     setError(null);
     start(async () => {
-      const res = await createBooking({ startsAt: slot.iso, name, email, notes, preferredMode: pref });
+      const res = await createBooking({ startsAt: slot.iso, name, email, notes, preferredMode: pref, year });
       if (res.ok) router.push(`/book/confirmed/${res.id}`);
       else setError(res.error);
     });

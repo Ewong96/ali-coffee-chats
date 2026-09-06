@@ -3,8 +3,9 @@
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { addMember, removeMember, setMemberActive, setMemberAdmin } from "@/app/actions/admin";
+import { yearLabel } from "@/lib/config";
 
-type Row = { id: string; email: string; name: string; title: string; active: boolean; isAdmin: boolean; connected: boolean; weeklySlots: number };
+type Row = { id: string; email: string; name: string; title: string; active: boolean; isAdmin: boolean; connected: boolean; weeklySlots: number; years: string[] };
 
 export default function AdminMembers({ members, meId }: { members: Row[]; meId: string }) {
   const router = useRouter();
@@ -50,6 +51,7 @@ export default function AdminMembers({ members, meId }: { members: Row[]; meId: 
               <th className="py-2 pr-3">Member</th>
               <th className="py-2 pr-3">Status</th>
               <th className="py-2 pr-3">Weekly slots</th>
+              <th className="py-2 pr-3">Chats with</th>
               <th className="py-2 pr-3">Admin</th>
               <th className="py-2" />
             </tr>
@@ -65,6 +67,7 @@ export default function AdminMembers({ members, meId }: { members: Row[]; meId: 
                   {!m.active ? <Badge cls="bg-stone-100 text-stone-600">Inactive</Badge> : m.connected ? <Badge cls="bg-emerald-100 text-emerald-800">Calendar connected</Badge> : <Badge cls="bg-amber-100 text-amber-800">Hasn&apos;t signed in</Badge>}
                 </td>
                 <td className="py-2 pr-3 text-stone-700">{m.weeklySlots}</td>
+                <td className="py-2 pr-3 text-stone-700">{m.years.length === 4 ? "All years" : m.years.map((y) => yearLabel(y)).join(", ") || "None"}</td>
                 <td className="py-2 pr-3">
                   <input type="checkbox" className="h-4 w-4 accent-amber-800" checked={m.isAdmin} disabled={pending || m.id === meId} onChange={(e) => run(() => setMemberAdmin(m.id, e.target.checked))} />
                 </td>

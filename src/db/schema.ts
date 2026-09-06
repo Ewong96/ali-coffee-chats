@@ -23,6 +23,8 @@ export const members = pgTable("members", {
   location: text("location").notNull().default(""), // for in-person
   virtualLink: text("virtual_link").notNull().default(""), // Zoom etc. Empty => auto Google Meet
   checkGoogleBusy: boolean("check_google_busy").notNull().default(true),
+  // Comma-separated class years this member will chat with (see CLASS_YEARS in config).
+  acceptedYears: text("accepted_years").notNull().default("freshman,sophomore,junior,senior"),
   // Google OAuth
   googleRefreshToken: text("google_refresh_token"),
   googleConnectedAt: timestamp("google_connected_at", { withTimezone: true }),
@@ -64,6 +66,7 @@ export const bookings = pgTable(
     studentName: text("student_name").notNull(),
     studentEmail: text("student_email").notNull(),
     studentNotes: text("student_notes").notNull().default(""),
+    studentYear: text("student_year").notNull().default(""),
     startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
     endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
     mode: text("mode").notNull(), // in_person | virtual
@@ -84,7 +87,25 @@ export const bookings = pgTable(
   ],
 );
 
+// One feedback entry per booking, written by the host after the chat.
+export const feedback = pgTable(
+  "feedback",
+  {
+    id: text("id").primaryKey(),
+    bookingId: text("booking_id").notNull().references(() => bookings.id, { onDelete: "cascade" }),
+    memberId: text("member_id").notNull().references(() => members.id, { onDelete: "cascade" }),
+    attended: boolean("attended").notNull().default(true),
+    program: text("program").notNull().default(""),
+    rating: integer("rating"), // 1-5 fit rating; null if no-show
+    notes: text("notes").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("feedback_booking").on(t.bookingId)],
+);
+
 export type Member = typeof members.$inferSelect;
+export type Feedback = typeof feedback.$inferSelect;
 export type AvailabilityRule = typeof availabilityRules.$inferSelect;
 export type AvailabilityException = typeof availabilityExceptions.$inferSelect;
 export type Booking = typeof bookings.$inferSelect;

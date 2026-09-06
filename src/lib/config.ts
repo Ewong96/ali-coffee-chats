@@ -26,3 +26,15 @@ export const MAX_ACTIVE_BOOKINGS_PER_STUDENT = 1;
 export const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
 export type MeetingMode = "in_person" | "virtual";
+
+// Class years students can identify as. Members choose which of these they will chat with.
+export const CLASS_YEARS = [
+  { id: "freshman", label: "Freshman" },
+  { id: "sophomore", label: "Sophomore" },
+  { id: "junior", label: "Junior" },
+  { id: "senior", label: "Senior" },
+] as const;
+export type ClassYear = (typeof CLASS_YEARS)[number]["id"];
+export const ALL_YEARS: ClassYear[] = CLASS_YEARS.map((y) => y.id);
+export const isClassYear = (v: unknown): v is ClassYear => typeof v === "string" && (ALL_YEARS as string[]).includes(v);
+export const yearLabel = (id: string) => CLASS_YEARS.find((y) => y.id === id)?.label ?? id;

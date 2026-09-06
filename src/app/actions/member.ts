@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { currentMember } from "@/auth";
 import { getDb, schema } from "@/db";
 import { deleteEvent } from "@/lib/google";
-import { DAY_END_HOUR, DAY_START_HOUR, SLOT_MINUTES } from "@/lib/config";
+import { ALL_YEARS, DAY_END_HOUR, DAY_START_HOUR, SLOT_MINUTES } from "@/lib/config";
 
 export type RuleInput = { weekday: number; startMin: number; mode: "in_person" | "virtual" | null };
 
@@ -46,6 +46,8 @@ export async function saveProfile(form: FormData): Promise<{ ok: boolean; error?
   const db = await getDb();
   const s = (k: string, max = 200) => String(form.get(k) ?? "").trim().slice(0, max);
   const defaultMode = form.get("defaultMode") === "virtual" ? "virtual" : "in_person";
+  const years = ALL_YEARS.filter((y) => form.getAll("years").includes(y));
+  if (!years.length) return { ok: false, error: "Pick at least one class year you'll chat with." };
   await db
     .update(schema.members)
     .set({
@@ -56,6 +58,7 @@ export async function saveProfile(form: FormData): Promise<{ ok: boolean; error?
       location: s("location", 300),
       virtualLink: s("virtualLink", 500),
       checkGoogleBusy: form.get("checkGoogleBusy") === "on",
+      acceptedYears: years.join(","),
     })
     .where(eq(schema.members.id, me.id));
   revalidatePath("/");
@@ -95,6 +98,34 @@ export async function cancelBooking(id: string): Promise<{ ok: boolean; error?: 
   }
   await db.update(schema.bookings).set({ status: "cancelled", cancelledAt: new Date() }).where(eq(schema.bookings.id, id));
   revalidatePath("/");
+  revalidatePath("/member");
+  revalidatePath("/admin");
+  return { ok: true };
+}
+
+export type FeedbackInput = { attended: boolean; program: string; rating: number | null; notes: string };
+
+export async function saveFeedback(bookingId: string, input: FeedbackInput): Promise<{ ok: boolean; error?: string }> {
+  const me = await requireMember();
+  const db = await getDb();
+  const b = await db.query.bookings.findFirst({ where: eq(schema.bookings.id, bookingId) });
+  if (!b || (b.memberId !== me.id && !me.isAdmin)) return { ok: false, error: "Not found" };
+  const attended = !!input.attended;
+  const rating = attended && Number.isInteger(input.rating) && input.rating! >= 1 && input.rating! <= 5 ? input.rating : null;
+  if (attended && rating === null) return { ok: false, error: "Please give a 1–5 fit rating." };
+  const values = {
+    attended,
+    program: String(input.program ?? "").trim().slice(0, 200),
+    rating,
+    notes: String(input.notes ?? "").trim().slice(0, 4000),
+    updatedAt: new Date(),
+  };
+  const existing = await db.query.feedback.findFirst({ where: eq(schema.feedback.bookingId, bookingId) });
+  if (existing) {
+    await db.update(schema.feedback).set(values).where(eq(schema.feedback.id, existing.id));
+  } else {
+    await db.insert(schema.feedback).values({ id: randomUUID(), bookingId, memberId: b.memberId, ...values });
+  }
   revalidatePath("/member");
   revalidatePath("/admin");
   return { ok: true };

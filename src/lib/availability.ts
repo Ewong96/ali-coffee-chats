@@ -2,7 +2,7 @@ import { DateTime } from "luxon";
 import { and, eq, gte, inArray, lt } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import type { Member } from "@/db/schema";
-import { MIN_LEAD_MINUTES, SLOT_MINUTES, type MeetingMode } from "./config";
+import { MIN_LEAD_MINUTES, SLOT_MINUTES, type ClassYear, type MeetingMode } from "./config";
 import { freeBusy, type BusyInterval } from "./google";
 import { bookingWindow, now, slotInstant, toDateKey, weekdayIndex } from "./time";
 
@@ -29,25 +29,29 @@ function overlapsBusy(start: Date, end: Date, busy: BusyInterval[]): boolean {
   return busy.some((b) => b.start < end && b.end > start);
 }
 
-/** Members eligible to take chats: active and connected to Google Calendar. */
-export async function bookableMembers(): Promise<Member[]> {
+export function acceptedYears(member: Member): string[] {
+  return member.acceptedYears.split(",").map((y) => y.trim()).filter(Boolean);
+}
+
+/** Members eligible to take chats: active, connected to Google Calendar, and (if given) accepting this class year. */
+export async function bookableMembers(year?: ClassYear): Promise<Member[]> {
   const db = await getDb();
   const all = await db.query.members.findMany({ where: eq(schema.members.active, true) });
-  return all.filter((m) => !!m.googleRefreshToken);
+  return all.filter((m) => !!m.googleRefreshToken && (!year || acceptedYears(m).includes(year)));
 }
 
 /**
  * Every open slot across all bookable members between rangeStart (inclusive) and rangeEnd (exclusive).
  * Applies recurring rules, per-date exceptions, existing bookings, lead time, and Google busy blocks.
  */
-export async function computeOpenSlots(rangeStart: DateTime, rangeEnd: DateTime): Promise<OpenSlot[]> {
+export async function computeOpenSlots(rangeStart: DateTime, rangeEnd: DateTime, year?: ClassYear): Promise<OpenSlot[]> {
   // Clamp to the booking window so nothing outside it is ever offered.
   const win = bookingWindow();
   if (rangeStart < win.start) rangeStart = win.start;
   if (rangeEnd > win.end) rangeEnd = win.end;
   if (rangeStart >= rangeEnd) return [];
   const db = await getDb();
-  const members = await bookableMembers();
+  const members = await bookableMembers(year);
   if (!members.length) return [];
   const memberIds = members.map((m) => m.id);
   const startKey = toDateKey(rangeStart);
@@ -124,8 +128,8 @@ export async function computeOpenSlots(rangeStart: DateTime, rangeEnd: DateTime)
 }
 
 /** Fresh candidate list for one exact slot start. */
-export async function candidatesForSlot(startsAt: Date): Promise<Candidate[]> {
+export async function candidatesForSlot(startsAt: Date, year?: ClassYear): Promise<Candidate[]> {
   const start = DateTime.fromJSDate(startsAt);
-  const slots = await computeOpenSlots(start, start.plus({ minutes: SLOT_MINUTES }));
+  const slots = await computeOpenSlots(start, start.plus({ minutes: SLOT_MINUTES }), year);
   return slots.find((s) => s.startsAt.getTime() === startsAt.getTime())?.candidates ?? [];
 }

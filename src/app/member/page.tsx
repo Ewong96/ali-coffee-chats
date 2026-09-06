@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { and, asc, eq, gte } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lt } from "drizzle-orm";
 import { currentMember, signOut } from "@/auth";
 import { getDb, schema } from "@/db";
 import { fmtWindow, now, toDateKey } from "@/lib/time";
@@ -7,6 +7,7 @@ import AvailabilityGrid from "@/components/AvailabilityGrid";
 import ProfileForm from "@/components/ProfileForm";
 import ExceptionsEditor from "@/components/ExceptionsEditor";
 import UpcomingChats from "@/components/UpcomingChats";
+import FeedbackPanel from "@/components/FeedbackPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,7 @@ export default async function MemberPage() {
   const me = await currentMember();
   if (!me) redirect("/member/login");
   const db = await getDb();
-  const [rules, exceptions, upcoming] = await Promise.all([
+  const [rules, exceptions, upcoming, past, myFeedback] = await Promise.all([
     db.query.availabilityRules.findMany({ where: eq(schema.availabilityRules.memberId, me.id) }),
     db.query.availabilityExceptions.findMany({
       where: and(eq(schema.availabilityExceptions.memberId, me.id), gte(schema.availabilityExceptions.date, toDateKey(now()))),
@@ -23,7 +24,13 @@ export default async function MemberPage() {
       where: and(eq(schema.bookings.memberId, me.id), eq(schema.bookings.status, "confirmed"), gte(schema.bookings.endsAt, new Date())),
       orderBy: asc(schema.bookings.startsAt),
     }),
+    db.query.bookings.findMany({
+      where: and(eq(schema.bookings.memberId, me.id), eq(schema.bookings.status, "confirmed"), lt(schema.bookings.endsAt, new Date())),
+      orderBy: desc(schema.bookings.startsAt),
+    }),
+    db.query.feedback.findMany({ where: eq(schema.feedback.memberId, me.id) }),
   ]);
+  const feedbackByBooking = new Map(myFeedback.map((f) => [f.bookingId, f]));
   const profileIncomplete = !me.name || (me.defaultMode === "in_person" && !me.location);
 
   return (
@@ -92,11 +99,31 @@ export default async function MemberPage() {
               studentName: b.studentName,
               studentEmail: b.studentEmail,
               studentNotes: b.studentNotes,
+              studentYear: b.studentYear,
               startsAt: b.startsAt.toISOString(),
               mode: b.mode as "in_person" | "virtual",
               location: b.location,
               calendarError: b.calendarError,
             }))}
+          />
+        </section>
+
+        <section className="card p-6">
+          <h2 className="text-lg font-semibold text-stone-900">Past chats &amp; feedback</h2>
+          <p className="mb-4 text-sm text-stone-500">After each chat, jot down how it went. Admins see all feedback in one place.</p>
+          <FeedbackPanel
+            chats={past.map((b) => {
+              const f = feedbackByBooking.get(b.id);
+              return {
+                id: b.id,
+                studentName: b.studentName,
+                studentEmail: b.studentEmail,
+                studentYear: b.studentYear,
+                studentNotes: b.studentNotes,
+                startsAt: b.startsAt.toISOString(),
+                feedback: f ? { attended: f.attended, program: f.program, rating: f.rating, notes: f.notes } : null,
+              };
+            })}
           />
         </section>
       </div>

@@ -6,13 +6,13 @@ A small scheduling app for the ALI eboard. Board members paint their weekly avai
 
 | Who | Where | What they do |
 | --- | --- | --- |
-| Students | `/` | See merged availability for the booking window (currently Sept 7–19, 2026), pick a 30-minute slot, enter name + email. No login. |
-| Eboard | `/member` | Sign in with Google (allow-listed emails only). Set name, role, default meeting spot or Zoom link. Paint a weekly grid; add per-date overrides; see and cancel upcoming chats. |
-| Admin | `/admin` | Add or remove eboard emails, see all upcoming chats. |
+| Students | `/` | Pick their class year, then see merged availability for the booking window (currently Sept 7–19, 2026) from members who chat with that year. Pick a 30-minute slot, enter name + email. No login. |
+| Eboard | `/member` | Sign in with Google (allow-listed emails only). Set name, role, default meeting spot or Zoom link, and which class years they will chat with. Paint a weekly grid; add per-date overrides; see and cancel upcoming chats; leave feedback on past chats (attended, program, 1–5 fit rating, notes). |
+| Admin | `/admin` | Add or remove eboard emails, see all upcoming chats, and view or download (CSV) all chat feedback. |
 
-Matching: at booking time the app finds every member free at that slot (weekly rule, minus per-date blocks, minus existing bookings, minus busy time on their Google Calendar) and picks the one with the fewest upcoming chats. Ties are random.
+Matching: at booking time the app finds every member free at that slot who accepts the student's class year (weekly rule, minus per-date blocks, minus existing bookings, minus busy time on their Google Calendar) and picks the one with the fewest upcoming chats. Ties are random.
 
-Rules live in [`src/lib/config.ts`](src/lib/config.ts): timezone (US Eastern), slot length, grid hours, the booking window dates (`BOOKING_WINDOW_START` / `BOOKING_WINDOW_END`), lead time, one active booking per student email. Change the two window dates to run another round.
+Rules live in [`src/lib/config.ts`](src/lib/config.ts): timezone (US Eastern), slot length, grid hours, the booking window dates (`BOOKING_WINDOW_START` / `BOOKING_WINDOW_END`), lead time, one active booking per student email, and the list of class years (`CLASS_YEARS`). Change the two window dates to run another round.
 
 ## Local development
 
@@ -57,6 +57,8 @@ Members grant calendar access the first time they sign in. The refresh token is 
 5. Deploy. Migrations in `drizzle/` run automatically on first request.
 
 Do not set `DEV_LOGIN` in production.
+
+To test the feedback form locally you need a chat in the past. With the dev server stopped, run `node scripts/seed-past-booking.mjs` to insert one for the admin member.
 
 ## Changing the schema
 

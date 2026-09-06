@@ -4,12 +4,15 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { saveProfile } from "@/app/actions/member";
 import type { Member } from "@/db/schema";
+import { CLASS_YEARS } from "@/lib/config";
 
 export default function ProfileForm({ member }: { member: Member }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState(member.defaultMode);
+  const accepted = new Set(member.acceptedYears.split(","));
 
   return (
     <form
@@ -17,8 +20,13 @@ export default function ProfileForm({ member }: { member: Member }) {
       onSubmit={(e) => {
         e.preventDefault();
         const fd = new FormData(e.currentTarget);
+        setError(null);
         start(async () => {
-          await saveProfile(fd);
+          const res = await saveProfile(fd);
+          if (!res.ok) {
+            setError(res.error ?? "Could not save.");
+            return;
+          }
           setSaved(true);
           setTimeout(() => setSaved(false), 2000);
           router.refresh();
@@ -60,6 +68,19 @@ export default function ProfileForm({ member }: { member: Member }) {
         <input id="pf-virtual" name="virtualLink" className="input" defaultValue={member.virtualLink} placeholder="Leave blank to auto-create a Google Meet" />
       </div>
 
+      <div className="sm:col-span-2">
+        <span className="label">I&apos;ll chat with</span>
+        <div className="flex flex-wrap gap-2">
+          {CLASS_YEARS.map((y) => (
+            <label key={y.id} className="flex cursor-pointer items-center gap-2 rounded-lg border border-stone-300 px-3 py-2 text-sm text-stone-700 has-[:checked]:border-amber-700 has-[:checked]:bg-amber-50 has-[:checked]:text-amber-900">
+              <input type="checkbox" name="years" value={y.id} defaultChecked={accepted.has(y.id)} className="h-4 w-4 accent-amber-800" />
+              {y.label}s
+            </label>
+          ))}
+        </div>
+        <p className="mt-1 text-xs text-stone-500">Students only see your slots if their class year is ticked here.</p>
+      </div>
+
       <label className="flex items-center gap-2 text-sm text-stone-700 sm:col-span-2">
         <input type="checkbox" name="checkGoogleBusy" defaultChecked={member.checkGoogleBusy} className="h-4 w-4 rounded border-stone-300 accent-amber-800" />
         Hide slots that conflict with events already on my Google Calendar
@@ -68,6 +89,7 @@ export default function ProfileForm({ member }: { member: Member }) {
       <div className="flex items-center gap-3 sm:col-span-2">
         <button className="btn-primary" disabled={pending}>{pending ? "Saving…" : "Save profile"}</button>
         {saved && <span className="text-sm text-emerald-700">Saved</span>}
+        {error && <span className="text-sm text-red-700">{error}</span>}
       </div>
     </form>
   );

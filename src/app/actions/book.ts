@@ -5,7 +5,7 @@ import { and, count, eq, gt, inArray } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { candidatesForSlot, locationFor } from "@/lib/availability";
 import { createEvent } from "@/lib/google";
-import { CLUB_NAME, MAX_ACTIVE_BOOKINGS_PER_STUDENT, SLOT_MINUTES, type MeetingMode } from "@/lib/config";
+import { CLUB_NAME, MAX_ACTIVE_BOOKINGS_PER_STUDENT, SLOT_MINUTES, isClassYear, yearLabel, type MeetingMode } from "@/lib/config";
 import { bookingWindow, fmtDateTime, fmtWindow, tzAbbrev } from "@/lib/time";
 
 export type BookingInput = {
@@ -14,6 +14,7 @@ export type BookingInput = {
   email: string;
   notes?: string;
   preferredMode: "any" | MeetingMode;
+  year: string;
 };
 
 export type BookingResult = { ok: true; id: string } | { ok: false; error: string };
@@ -28,6 +29,8 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
   if (!name) return { ok: false, error: "Please enter your name." };
   if (!EMAIL_RE.test(email)) return { ok: false, error: "Please enter a valid email." };
   if (Number.isNaN(startsAt.getTime())) return { ok: false, error: "Invalid time." };
+  if (!isClassYear(input.year)) return { ok: false, error: "Please pick your class year first." };
+  const year = input.year;
   const win = bookingWindow();
   if (startsAt < win.start.toJSDate() || startsAt >= win.end.toJSDate()) {
     return { ok: false, error: `Coffee chats only run ${fmtWindow()}.` };
@@ -44,7 +47,7 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
     return { ok: false, error: "You already have an upcoming coffee chat. Check your calendar invite for details." };
   }
 
-  let candidates = await candidatesForSlot(startsAt);
+  let candidates = await candidatesForSlot(startsAt, year);
   if (input.preferredMode !== "any") candidates = candidates.filter((c) => c.mode === input.preferredMode);
   if (!candidates.length) return { ok: false, error: "Sorry, that time was just taken. Please pick another slot." };
 
@@ -76,6 +79,7 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
         studentName: name,
         studentEmail: email,
         studentNotes: notes,
+        studentYear: year,
         startsAt,
         endsAt,
         mode: cand.mode,
@@ -97,7 +101,7 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
         "",
         notes ? `What ${name} would like to talk about:\n${notes}` : "",
         "",
-        `Student: ${name} <${email}>`,
+        `Student: ${name} <${email}> · ${yearLabel(year)}`,
         `Host: ${member.name || member.email} <${member.email}>`,
         "",
         `Need to reschedule? Reply to this invite so your host can cancel and you can rebook.`,
