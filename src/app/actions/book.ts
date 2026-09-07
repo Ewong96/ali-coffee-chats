@@ -1,12 +1,14 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
+import { after } from "next/server";
 import { and, count, eq, gt, inArray } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { candidatesForSlot, locationFor } from "@/lib/availability";
 import { createEvent } from "@/lib/google";
+import { sendEmail } from "@/lib/email";
 import { CLUB_NAME, MAX_ACTIVE_BOOKINGS_PER_STUDENT, SLOT_MINUTES, isClassYear, yearLabel, type MeetingMode } from "@/lib/config";
-import { bookingWindow, fmtDateTime, fmtWindow, tzAbbrev } from "@/lib/time";
+import { bookingWindow, fmtDateLong, fmtDateTime, fmtTime, fmtWindow, tzAbbrev } from "@/lib/time";
 
 export type BookingInput = {
   startsAt: string; // ISO instant
@@ -89,9 +91,11 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
       continue; // slot raced by another booking for this member; try next candidate
     }
 
-    // Create the calendar event on the member's Google Calendar; Google emails both parties.
+    // Create the calendar event on the member's Google Calendar; Google emails the student an invite.
+    const useMeet = cand.mode === "virtual" && !member.virtualLink;
+    let calendarFailed = false;
+    let finalLocation = location;
     try {
-      const useMeet = cand.mode === "virtual" && !member.virtualLink;
       const modeLabel = cand.mode === "in_person" ? `In person — ${location}` : useMeet ? "Virtual — Google Meet (link in this invite)" : `Virtual — ${location}`;
       const description = [
         `${CLUB_NAME} coffee chat between ${name} and ${member.name || member.email}${member.title ? ` (${member.title})` : ""}.`,
@@ -119,17 +123,67 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
         createMeet: useMeet,
         requestId: id,
       });
-      await db
-        .update(schema.bookings)
-        .set({ googleEventId: ev.id, location: useMeet && ev.hangoutLink ? ev.hangoutLink : location })
-        .where(eq(schema.bookings.id, id));
+      finalLocation = useMeet && ev.hangoutLink ? ev.hangoutLink : location;
+      await db.update(schema.bookings).set({ googleEventId: ev.id, location: finalLocation }).where(eq(schema.bookings.id, id));
     } catch (err) {
       console.error("Calendar event failed", err);
+      calendarFailed = true;
       await db
         .update(schema.bookings)
         .set({ calendarError: err instanceof Error ? err.message.slice(0, 500) : "unknown error" })
         .where(eq(schema.bookings.id, id));
     }
+
+    // Email the host (and the student, if the calendar invite could not be sent) after the response is returned.
+    const whenLine = `${fmtDateLong(startsAt)}, ${fmtTime(startsAt)} – ${fmtTime(endsAt)} ${tzAbbrev(startsAt)}`;
+    const whereLine = cand.mode === "in_person" ? `In person · ${finalLocation}` : finalLocation ? `Virtual · ${finalLocation}` : "Virtual · Google Meet";
+    const appUrl = (process.env.AUTH_URL ?? "").replace(/\/$/, "");
+    const hostFirst = (member.name || member.email).split(" ")[0];
+    after(async () => {
+      await sendEmail({
+        to: member.email,
+        replyTo: email,
+        subject: `New coffee chat: ${name} on ${fmtDateTime(startsAt)}`,
+        text: [
+          `Hi ${hostFirst},`,
+          "",
+          `${name} just booked a coffee chat with you.`,
+          "",
+          `When:  ${whenLine}`,
+          `Where: ${whereLine}`,
+          `Who:   ${name} <${email}> · ${yearLabel(year)}`,
+          notes ? `\nThey'd like to talk about:\n${notes}` : "",
+          "",
+          calendarFailed
+            ? "Heads up: we couldn't add this to your Google Calendar (your connection may have expired). Please add it yourself and email the student to confirm. Sign in at the dashboard to reconnect."
+            : "It's on your Google Calendar and the student has been sent an invite.",
+          appUrl ? `\nYour dashboard: ${appUrl}/member` : "",
+          "",
+          `— ${CLUB_NAME} Coffee Chats`,
+        ]
+          .join("\n")
+          .replace(/\n{3,}/g, "\n\n"),
+      });
+      if (calendarFailed) {
+        await sendEmail({
+          to: email,
+          replyTo: member.email,
+          subject: `Your ${CLUB_NAME} coffee chat with ${member.name || "the eboard"} is booked`,
+          text: [
+            `Hi ${name.split(" ")[0]},`,
+            "",
+            `You're booked for a coffee chat with ${member.name || member.email}${member.title ? ` (${member.title})` : ""}.`,
+            "",
+            `When:  ${whenLine}`,
+            `Where: ${whereLine}`,
+            "",
+            `Your host will follow up from ${member.email}. Reply to this email if you need to reschedule.`,
+            "",
+            `— ${CLUB_NAME} Coffee Chats`,
+          ].join("\n"),
+        });
+      }
+    });
     return { ok: true, id };
   }
   return { ok: false, error: "Sorry, that time was just taken. Please pick another slot." };

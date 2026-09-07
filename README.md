@@ -26,6 +26,16 @@ Without `DATABASE_URL` the app uses an embedded Postgres (PGlite) stored in `.da
 
 To try the eboard side before Google OAuth is configured, set `DEV_LOGIN=true` in `.env.local`. The login page then shows a local-only form that signs you in as any allow-listed email. This is ignored in production. Bookings made this way record a calendar error instead of creating a real event.
 
+## Email notifications (Gmail)
+
+When a student books, the host gets an email with the details (Google Calendar does not notify the owner of events created on their own calendar). If the calendar invite fails, the student is emailed a confirmation too. Emails are sent from a Gmail account through SMTP:
+
+1. On the Gmail account you want to send from, turn on 2-Step Verification (Google Account → Security).
+2. Go to https://myaccount.google.com/apppasswords, create an app password named "ALI Coffee Chats", and copy the 16-character code.
+3. Set `GMAIL_USER` to that Gmail address and `GMAIL_APP_PASSWORD` to the code (spaces are fine, they are ignored).
+
+If these are not set, booking still works and the skipped email is logged.
+
 ## Google Cloud setup (required for real sign-in and calendar invites)
 
 1. Go to https://console.cloud.google.com and create a project (e.g. "ALI Coffee Chats").
@@ -52,6 +62,7 @@ Members grant calendar access the first time they sign in. The refresh token is 
    - `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`
    - `ADMIN_EMAIL`
    - `DATABASE_URL`
+   - `GMAIL_USER`, `GMAIL_APP_PASSWORD` (optional, for booking emails)
    - `AUTH_URL` = your deployed origin, e.g. `https://ali-chats.vercel.app`
 4. Add the production redirect URI to the Google OAuth client (step 4 above).
 5. Deploy. Migrations in `drizzle/` run automatically on first request.
