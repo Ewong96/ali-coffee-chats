@@ -2,7 +2,7 @@ import { DateTime } from "luxon";
 import { and, eq, gte, inArray, lt } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import type { Member } from "@/db/schema";
-import { MIN_LEAD_MINUTES, SLOT_MINUTES, type ClassYear, type MeetingMode } from "./config";
+import { MIN_LEAD_MINUTES, SLOT_MINUTES, TIMEZONE, type ClassYear, type MeetingMode } from "./config";
 import { freeBusy, type BusyInterval } from "./google";
 import { bookingWindow, now, slotInstant, toDateKey, weekdayIndex } from "./time";
 
@@ -45,6 +45,10 @@ export async function bookableMembers(year?: ClassYear): Promise<Member[]> {
  * Applies recurring rules, per-date exceptions, existing bookings, lead time, and Google busy blocks.
  */
 export async function computeOpenSlots(rangeStart: DateTime, rangeEnd: DateTime, year?: ClassYear): Promise<OpenSlot[]> {
+  // Work in the club timezone regardless of the server's zone (Vercel runs in UTC): day boundaries
+  // and weekday lookups below must be Eastern days, or slots before 8 PM ET land on the wrong date.
+  rangeStart = rangeStart.setZone(TIMEZONE);
+  rangeEnd = rangeEnd.setZone(TIMEZONE);
   // Clamp to the booking window so nothing outside it is ever offered.
   const win = bookingWindow();
   if (rangeStart < win.start) rangeStart = win.start;
@@ -129,7 +133,7 @@ export async function computeOpenSlots(rangeStart: DateTime, rangeEnd: DateTime,
 
 /** Fresh candidate list for one exact slot start. */
 export async function candidatesForSlot(startsAt: Date, year?: ClassYear): Promise<Candidate[]> {
-  const start = DateTime.fromJSDate(startsAt);
+  const start = DateTime.fromJSDate(startsAt, { zone: TIMEZONE });
   const slots = await computeOpenSlots(start, start.plus({ minutes: SLOT_MINUTES }), year);
   return slots.find((s) => s.startsAt.getTime() === startsAt.getTime())?.candidates ?? [];
 }
