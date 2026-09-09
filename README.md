@@ -7,7 +7,7 @@ A small scheduling app for the ALI eboard. Board members paint their weekly avai
 | Who | Where | What they do |
 | --- | --- | --- |
 | Students | `/` | Pick their class year, then see merged availability for the booking window (currently Sept 7–19, 2026) from members who chat with that year. Pick a 30-minute slot, enter name + email. No login. |
-| Eboard | `/member` | Sign in with Google (allow-listed emails only). Set name, role, default meeting spot or Zoom link, and which class years they will chat with. Paint a weekly grid; add per-date overrides; see and cancel upcoming chats; leave feedback on past chats (attended, program, 1–5 fit rating, notes). |
+| Eboard | `/member` | Sign in with Google (allow-listed emails only). Set name, role, default meeting spot or Zoom link, and which class years they will chat with. Paint a weekly grid; add per-date overrides; see and cancel upcoming chats; leave feedback on past chats (attended, program, 1–5 fit rating, notes); log chats that happened outside the site. |
 | Admin | `/admin` | Add or remove eboard emails, see all upcoming chats, and view or download (CSV) all chat feedback. |
 
 Matching: at booking time the app finds every member free at that slot who accepts the student's class year (weekly rule, minus per-date blocks, minus existing bookings, minus busy time on their Google Calendar) and picks the one with the fewest upcoming chats. Ties are random.

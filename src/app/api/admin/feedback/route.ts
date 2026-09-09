@@ -22,7 +22,7 @@ export async function GET() {
   const bookingById = new Map(bookings.map((b) => [b.id, b]));
   const memberById = new Map(members.map((m) => [m.id, m]));
 
-  const header = ["Chat date", "Student name", "Student email", "Class year", "Host", "Host email", "Attended", "Program", "Fit rating (1-5)", "Notes", "Student topics", "Feedback updated"];
+  const header = ["Chat date", "Student name", "Student email", "Class year", "Host", "Host email", "Attended", "Program", "Fit rating (1-5)", "Notes", "Student topics", "Source", "Feedback updated"];
   const lines = [header.map(csvCell).join(",")];
   for (const f of rows) {
     const b = bookingById.get(f.bookingId);
@@ -40,6 +40,7 @@ export async function GET() {
         f.rating ?? "",
         f.notes,
         b?.studentNotes ?? "",
+        b?.source === "manual" ? "Logged by host" : "Booked on site",
         fmtDateTime(f.updatedAt),
       ]
         .map(csvCell)

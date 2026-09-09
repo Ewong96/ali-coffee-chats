@@ -8,6 +8,7 @@ import ProfileForm from "@/components/ProfileForm";
 import ExceptionsEditor from "@/components/ExceptionsEditor";
 import UpcomingChats from "@/components/UpcomingChats";
 import FeedbackPanel from "@/components/FeedbackPanel";
+import { hostStats, emptyStats } from "@/lib/stats";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +32,7 @@ export default async function MemberPage() {
     db.query.feedback.findMany({ where: eq(schema.feedback.memberId, me.id) }),
   ]);
   const feedbackByBooking = new Map(myFeedback.map((f) => [f.bookingId, f]));
+  const myStats = hostStats([...upcoming, ...past], myFeedback).get(me.id) ?? emptyStats;
   const profileIncomplete = !me.name || (me.defaultMode === "in_person" && !me.location);
 
   return (
@@ -48,9 +50,16 @@ export default async function MemberPage() {
             <p className="text-sm text-stone-500">{me.email}{me.title ? ` · ${me.title}` : ""}</p>
           </div>
         </div>
-        <form action={async () => { "use server"; await signOut({ redirectTo: "/" }); }}>
-          <button className="btn-secondary">Sign out</button>
-        </form>
+        <div className="flex items-center gap-3">
+          <div className="flex gap-2 text-sm">
+            <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-800"><b>{myStats.done}</b> done</span>
+            <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-900"><b>{myStats.upcoming}</b> upcoming</span>
+            {myStats.feedbackPending > 0 && <span className="rounded-full bg-stone-100 px-3 py-1 text-stone-700"><b>{myStats.feedbackPending}</b> need feedback</span>}
+          </div>
+          <form action={async () => { "use server"; await signOut({ redirectTo: "/" }); }}>
+            <button className="btn-secondary">Sign out</button>
+          </form>
+        </div>
       </div>
 
       {!me.googleRefreshToken && (
@@ -112,6 +121,7 @@ export default async function MemberPage() {
           <h2 className="text-lg font-semibold text-stone-900">Past chats &amp; feedback</h2>
           <p className="mb-4 text-sm text-stone-500">After each chat, jot down how it went. Admins see all feedback in one place.</p>
           <FeedbackPanel
+            today={toDateKey(now())}
             chats={past.map((b) => {
               const f = feedbackByBooking.get(b.id);
               return {
@@ -121,6 +131,7 @@ export default async function MemberPage() {
                 studentYear: b.studentYear,
                 studentNotes: b.studentNotes,
                 startsAt: b.startsAt.toISOString(),
+                manual: b.source === "manual",
                 feedback: f ? { attended: f.attended, program: f.program, rating: f.rating, notes: f.notes } : null,
               };
             })}

@@ -6,7 +6,8 @@ import { revalidatePath } from "next/cache";
 import { currentMember } from "@/auth";
 import { getDb, schema } from "@/db";
 import { deleteEvent } from "@/lib/google";
-import { ALL_YEARS, DAY_END_HOUR, DAY_START_HOUR, SLOT_MINUTES } from "@/lib/config";
+import { ALL_YEARS, DAY_END_HOUR, DAY_START_HOUR, SLOT_MINUTES, TIMEZONE, isClassYear } from "@/lib/config";
+import { DateTime } from "luxon";
 
 export type RuleInput = { weekday: number; startMin: number; mode: "in_person" | "virtual" | null };
 
@@ -126,6 +127,65 @@ export async function saveFeedback(bookingId: string, input: FeedbackInput): Pro
   } else {
     await db.insert(schema.feedback).values({ id: randomUUID(), bookingId, memberId: b.memberId, ...values });
   }
+  revalidatePath("/member");
+  revalidatePath("/admin");
+  return { ok: true };
+}
+
+export type ManualChatInput = {
+  studentName: string;
+  studentEmail: string;
+  studentYear: string;
+  date: string; // YYYY-MM-DD in club timezone
+  time: string; // HH:mm
+  feedback: FeedbackInput;
+};
+
+/** Record a chat that happened outside the app (e.g. arranged over text) together with its feedback. */
+export async function logManualChat(input: ManualChatInput): Promise<{ ok: boolean; error?: string }> {
+  const me = await requireMember();
+  const name = String(input.studentName ?? "").trim().slice(0, 100);
+  const email = String(input.studentEmail ?? "").trim().toLowerCase().slice(0, 200);
+  if (!name) return { ok: false, error: "Enter the student's name." };
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: "That email doesn't look right." };
+  const year = isClassYear(input.studentYear) ? input.studentYear : "";
+  const time = /^\d{2}:\d{2}$/.test(input.time ?? "") ? input.time : "12:00";
+  const start = DateTime.fromISO(`${input.date}T${time}`, { zone: TIMEZONE });
+  if (!start.isValid) return { ok: false, error: "Pick the date of the chat." };
+  if (start > DateTime.now()) return { ok: false, error: "The chat date must be in the past." };
+  const attended = !!input.feedback?.attended;
+  const rating = attended && Number.isInteger(input.feedback?.rating) && input.feedback.rating! >= 1 && input.feedback.rating! <= 5 ? input.feedback.rating : null;
+  if (attended && rating === null) return { ok: false, error: "Please give a 1–5 fit rating." };
+
+  const db = await getDb();
+  const bookingId = randomUUID();
+  try {
+    await db.insert(schema.bookings).values({
+      id: bookingId,
+      memberId: me.id,
+      studentName: name,
+      studentEmail: email,
+      studentNotes: "",
+      studentYear: year,
+      startsAt: start.toJSDate(),
+      endsAt: start.plus({ minutes: SLOT_MINUTES }).toJSDate(),
+      mode: "in_person",
+      location: "",
+      status: "confirmed",
+      source: "manual",
+    });
+  } catch {
+    return { ok: false, error: "You already have a chat logged at that exact time. Adjust the time by a few minutes." };
+  }
+  await db.insert(schema.feedback).values({
+    id: randomUUID(),
+    bookingId,
+    memberId: me.id,
+    attended,
+    program: String(input.feedback?.program ?? "").trim().slice(0, 200),
+    rating,
+    notes: String(input.feedback?.notes ?? "").trim().slice(0, 4000),
+  });
   revalidatePath("/member");
   revalidatePath("/admin");
   return { ok: true };

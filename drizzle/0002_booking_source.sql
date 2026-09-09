@@ -1,0 +1,1 @@
+ALTER TABLE "bookings" ADD COLUMN "source" text DEFAULT 'web' NOT NULL;

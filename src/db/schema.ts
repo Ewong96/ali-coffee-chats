@@ -72,6 +72,7 @@ export const bookings = pgTable(
     mode: text("mode").notNull(), // in_person | virtual
     location: text("location").notNull().default(""), // address or meeting link
     status: text("status").notNull().default("confirmed"), // confirmed | cancelled
+    source: text("source").notNull().default("web"), // web (booked by a student) | manual (logged by the host afterwards)
     googleEventId: text("google_event_id"),
     calendarError: text("calendar_error"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

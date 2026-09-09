@@ -6,6 +6,7 @@ import AdminMembers from "@/components/AdminMembers";
 import UpcomingChats from "@/components/UpcomingChats";
 import { yearLabel } from "@/lib/config";
 import { fmtDateTime } from "@/lib/time";
+import { emptyStats, hostStats } from "@/lib/stats";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,7 @@ export default async function AdminPage() {
   if (!me) redirect("/member/login");
   if (!me.isAdmin) redirect("/member");
   const db = await getDb();
-  const [members, upcoming, ruleCounts, allFeedback] = await Promise.all([
+  const [members, upcoming, ruleCounts, allFeedback, allConfirmed] = await Promise.all([
     db.query.members.findMany({ orderBy: asc(schema.members.email) }),
     db.query.bookings.findMany({
       where: and(eq(schema.bookings.status, "confirmed"), gte(schema.bookings.endsAt, new Date())),
@@ -22,7 +23,11 @@ export default async function AdminPage() {
     }),
     db.query.availabilityRules.findMany({ columns: { memberId: true } }),
     db.query.feedback.findMany({ orderBy: desc(schema.feedback.updatedAt) }),
+    db.query.bookings.findMany({ where: eq(schema.bookings.status, "confirmed"), columns: { id: true, memberId: true, endsAt: true, status: true, studentEmail: true } }),
   ]);
+  const stats = hostStats(allConfirmed, allFeedback);
+  const totals = [...stats.values()].reduce((a, s) => ({ done: a.done + s.done, upcoming: a.upcoming + s.upcoming, noShows: a.noShows + s.noShows, feedbackPending: a.feedbackPending + s.feedbackPending }), { ...emptyStats });
+  const uniqueStudents = new Set(allConfirmed.map((b) => b.studentEmail).filter(Boolean)).size;
   const feedbackBookings = allFeedback.length
     ? await db.query.bookings.findMany({ where: inArray(schema.bookings.id, allFeedback.map((f) => f.bookingId)) })
     : [];
@@ -34,6 +39,12 @@ export default async function AdminPage() {
   return (
     <main className="mx-auto max-w-5xl px-4 py-10">
       <h1 className="mb-6 text-2xl font-bold text-stone-900">Admin</h1>
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Stat label="Chats completed" value={totals.done} />
+        <Stat label="Upcoming" value={totals.upcoming} />
+        <Stat label="Students reached" value={uniqueStudents} />
+        <Stat label="No-shows" value={totals.noShows} />
+      </div>
       <div className="space-y-6">
         <section className="card p-6">
           <h2 className="text-lg font-semibold text-stone-900">Eboard members</h2>
@@ -50,6 +61,7 @@ export default async function AdminPage() {
               connected: !!m.googleRefreshToken,
               weeklySlots: slotsBy.get(m.id) ?? 0,
               years: m.acceptedYears.split(",").filter(Boolean),
+              stats: stats.get(m.id) ?? emptyStats,
             }))}
           />
         </section>
@@ -101,10 +113,13 @@ export default async function AdminPage() {
                     const b = bookingById.get(f.bookingId);
                     return (
                       <tr key={f.id}>
-                        <td className="py-2 pr-3 whitespace-nowrap text-stone-700">{b ? fmtDateTime(b.startsAt) : "—"}</td>
+                        <td className="py-2 pr-3 whitespace-nowrap text-stone-700">
+                          {b ? fmtDateTime(b.startsAt) : "—"}
+                          {b?.source === "manual" && <div className="text-xs text-stone-500">logged manually</div>}
+                        </td>
                         <td className="py-2 pr-3">
                           <div className="font-medium text-stone-900">{b?.studentName ?? "—"}</div>
-                          <div className="text-stone-500">{b?.studentEmail}{b?.studentYear ? ` · ${yearLabel(b.studentYear)}` : ""}</div>
+                          <div className="text-stone-500">{[b?.studentEmail, b?.studentYear ? yearLabel(b.studentYear) : ""].filter(Boolean).join(" · ")}</div>
                         </td>
                         <td className="py-2 pr-3 text-stone-700">{nameOf.get(f.memberId) ?? "—"}</td>
                         <td className="py-2 pr-3">{f.attended ? <span className="text-emerald-700">Yes</span> : <span className="text-red-700">No-show</span>}</td>
@@ -121,5 +136,14 @@ export default async function AdminPage() {
         </section>
       </div>
     </main>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="card px-4 py-3">
+      <div className="text-xs font-semibold uppercase tracking-wide text-stone-500">{label}</div>
+      <div className="mt-1 text-2xl font-bold text-stone-900">{value}</div>
+    </div>
   );
 }
