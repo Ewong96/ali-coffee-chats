@@ -45,7 +45,7 @@ If these are not set, booking still works and the skipped email is logged.
    - `https://www.googleapis.com/auth/calendar.events`
    - `https://www.googleapis.com/auth/calendar.freebusy`
    
-   While the app is in **Testing** mode, add every eboard member's Gmail/Workspace address under **Test users** (up to 100). Only they can sign in. Publishing the app for general use requires Google verification because the calendar scope is sensitive; for a club, testing mode is enough.
+   **Important:** while the app is in **Testing** mode, Google expires every sign-in token after 7 days, after which calendar invites stop working until the member signs in again. Once sign-in works, go to **Audience → Publish app** to move it to production. Google will warn that the app is unverified (each member clicks "Advanced → Go to ALI Coffee Chats" once when signing in), but tokens then last indefinitely. Members must sign in once more after publishing.
 4. **APIs & Services → Credentials → Create credentials → OAuth client ID**, type **Web application**. Authorized redirect URIs:
    - `http://localhost:3000/api/auth/callback/google`
    - `https://YOUR-DOMAIN/api/auth/callback/google`

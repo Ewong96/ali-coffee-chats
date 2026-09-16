@@ -6,7 +6,7 @@ import { addMember, removeMember, setMemberActive, setMemberAdmin } from "@/app/
 import { yearLabel } from "@/lib/config";
 import type { HostStats } from "@/lib/stats";
 
-type Row = { id: string; email: string; name: string; title: string; active: boolean; isAdmin: boolean; connected: boolean; weeklySlots: number; years: string[]; stats: HostStats };
+type Row = { id: string; email: string; name: string; title: string; active: boolean; isAdmin: boolean; connected: boolean; tokenExpired: boolean; weeklySlots: number; years: string[]; stats: HostStats };
 
 export default function AdminMembers({ members, meId }: { members: Row[]; meId: string }) {
   const router = useRouter();
@@ -67,7 +67,7 @@ export default function AdminMembers({ members, meId }: { members: Row[]; meId: 
                   <div className="text-stone-500">{m.email}{m.title ? ` · ${m.title}` : ""}</div>
                 </td>
                 <td className="py-2 pr-3">
-                  {!m.active ? <Badge cls="bg-stone-100 text-stone-600">Inactive</Badge> : m.connected ? <Badge cls="bg-emerald-100 text-emerald-800">Calendar connected</Badge> : <Badge cls="bg-amber-100 text-amber-800">Hasn&apos;t signed in</Badge>}
+                  {!m.active ? <Badge cls="bg-stone-100 text-stone-600">Inactive</Badge> : !m.connected ? <Badge cls="bg-amber-100 text-amber-800">Hasn&apos;t signed in</Badge> : m.tokenExpired ? <Badge cls="bg-red-100 text-red-800">Calendar expired · must sign in again</Badge> : <Badge cls="bg-emerald-100 text-emerald-800">Calendar connected</Badge>}
                 </td>
                 <td className="py-2 pr-3">
                   <span className="font-semibold text-stone-900">{m.stats.done}</span>

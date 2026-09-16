@@ -5,7 +5,7 @@ import { after } from "next/server";
 import { and, count, eq, gt, inArray } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { candidatesForSlot, locationFor } from "@/lib/availability";
-import { createEvent } from "@/lib/google";
+import { GoogleAuthError, createEvent, markGoogleDisconnected } from "@/lib/google";
 import { sendEmail } from "@/lib/email";
 import { CLUB_NAME, MAX_ACTIVE_BOOKINGS_PER_STUDENT, SLOT_MINUTES, isClassYear, yearLabel, type MeetingMode } from "@/lib/config";
 import { bookingWindow, fmtDateLong, fmtDateTime, fmtTime, fmtWindow, tzAbbrev } from "@/lib/time";
@@ -128,6 +128,7 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
     } catch (err) {
       console.error("Calendar event failed", err);
       calendarFailed = true;
+      if (err instanceof GoogleAuthError) await markGoogleDisconnected(member.id, err.message).catch(() => {});
       await db
         .update(schema.bookings)
         .set({ calendarError: err instanceof Error ? err.message.slice(0, 500) : "unknown error" })
@@ -155,7 +156,7 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
           notes ? `\nThey'd like to talk about:\n${notes}` : "",
           "",
           calendarFailed
-            ? "Heads up: we couldn't add this to your Google Calendar (your connection may have expired). Please add it yourself and email the student to confirm. Sign in at the dashboard to reconnect."
+            ? "Heads up: we couldn't add this to your Google Calendar because your Google connection has expired. Please add it to your calendar yourself and email the student to confirm. Then sign out of the dashboard and sign back in with Google to reconnect, so future bookings work."
             : "It's on your Google Calendar and the student has been sent an invite.",
           appUrl ? `\nYour dashboard: ${appUrl}/member` : "",
           "",

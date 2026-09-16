@@ -69,6 +69,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (account.refresh_token) {
         patch.googleRefreshToken = account.refresh_token;
         patch.googleConnectedAt = new Date();
+        patch.googleTokenError = null;
       }
       if (Object.keys(patch).length) {
         await db.update(schema.members).set(patch).where(eq(schema.members.id, member.id));

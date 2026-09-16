@@ -3,7 +3,7 @@ import { and, eq, gte, inArray, lt } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import type { Member } from "@/db/schema";
 import { MIN_LEAD_MINUTES, SLOT_MINUTES, TIMEZONE, type ClassYear, type MeetingMode } from "./config";
-import { freeBusy, type BusyInterval } from "./google";
+import { GoogleAuthError, freeBusy, markGoogleDisconnected, type BusyInterval } from "./google";
 import { bookingWindow, now, slotInstant, toDateKey, weekdayIndex } from "./time";
 
 export type Candidate = { memberId: string; mode: MeetingMode };
@@ -83,8 +83,13 @@ export async function computeOpenSlots(rangeStart: DateTime, rangeEnd: DateTime,
   const busyByMember = new Map<string, BusyInterval[]>();
   await Promise.all(
     members.map(async (m) => {
-      if (!m.checkGoogleBusy || !m.googleRefreshToken) return busyByMember.set(m.id, []);
-      busyByMember.set(m.id, await freeBusy(m.googleRefreshToken, rangeStart.toJSDate(), rangeEnd.toJSDate()));
+      if (!m.checkGoogleBusy || !m.googleRefreshToken || m.googleTokenError) return busyByMember.set(m.id, []);
+      try {
+        busyByMember.set(m.id, await freeBusy(m.googleRefreshToken, rangeStart.toJSDate(), rangeEnd.toJSDate()));
+      } catch (err) {
+        busyByMember.set(m.id, []);
+        if (err instanceof GoogleAuthError) await markGoogleDisconnected(m.id, err.message).catch(() => {});
+      }
     }),
   );
 

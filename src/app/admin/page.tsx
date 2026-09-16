@@ -59,6 +59,7 @@ export default async function AdminPage() {
               active: m.active,
               isAdmin: m.isAdmin,
               connected: !!m.googleRefreshToken,
+              tokenExpired: !!m.googleTokenError,
               weeklySlots: slotsBy.get(m.id) ?? 0,
               years: m.acceptedYears.split(",").filter(Boolean),
               stats: stats.get(m.id) ?? emptyStats,

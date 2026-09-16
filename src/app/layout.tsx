@@ -18,7 +18,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="flex min-h-full flex-col">
         <Header />
         <div className="flex-1">{children}</div>
-        <footer className="py-8 text-center text-xs text-stone-400">{APP_TITLE}</footer>
+        <footer className="py-8 text-center text-xs text-stone-400">
+          {APP_TITLE} · <a className="hover:text-stone-600" href="/privacy">Privacy</a> · <a className="hover:text-stone-600" href="/terms">Terms</a>
+        </footer>
       </body>
     </html>
   );

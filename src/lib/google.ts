@@ -7,6 +7,14 @@ export const DEV_FAKE_TOKEN = "dev-fake-token";
 
 const tokenCache = new Map<string, { token: string; expiresAt: number }>();
 
+/** Google refused the refresh token (revoked, or expired because the OAuth app is in Testing mode). The member must sign in again. */
+export class GoogleAuthError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GoogleAuthError";
+  }
+}
+
 export async function accessTokenFor(refreshToken: string): Promise<string> {
   if (refreshToken === DEV_FAKE_TOKEN) throw new Error("Dev login has no real Google Calendar connection");
   const cached = tokenCache.get(refreshToken);
@@ -23,7 +31,11 @@ export async function accessTokenFor(refreshToken: string): Promise<string> {
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
   });
-  if (!res.ok) throw new Error(`Google token refresh failed (${res.status}): ${await res.text()}`);
+  if (!res.ok) {
+    const body = await res.text();
+    if (res.status === 400 || res.status === 401) throw new GoogleAuthError(`Google token refresh failed (${res.status}): ${body}`);
+    throw new Error(`Google token refresh failed (${res.status}): ${body}`);
+  }
   const json = (await res.json()) as TokenResponse;
   tokenCache.set(refreshToken, { token: json.access_token, expiresAt: Date.now() + json.expires_in * 1000 });
   return json.access_token;
@@ -58,6 +70,7 @@ export async function freeBusy(refreshToken: string, timeMin: Date, timeMax: Dat
     busyCache.set(key, { at: Date.now(), busy });
     return busy;
   } catch (err) {
+    if (err instanceof GoogleAuthError) throw err;
     console.error("freeBusy failed", err);
     return [];
   }
@@ -122,4 +135,12 @@ export async function deleteEvent(refreshToken: string, eventId: string): Promis
     throw new Error(`Calendar delete failed (${res.status}): ${await res.text()}`);
   }
   invalidateBusyCache();
+}
+
+/** Record that a member's Google connection is dead so the UI can ask them to sign in again. */
+export async function markGoogleDisconnected(memberId: string, message: string) {
+  const { getDb, schema } = await import("@/db");
+  const { eq } = await import("drizzle-orm");
+  const db = await getDb();
+  await db.update(schema.members).set({ googleTokenError: message.slice(0, 300) }).where(eq(schema.members.id, memberId));
 }

@@ -28,6 +28,7 @@ export const members = pgTable("members", {
   // Google OAuth
   googleRefreshToken: text("google_refresh_token"),
   googleConnectedAt: timestamp("google_connected_at", { withTimezone: true }),
+  googleTokenError: text("google_token_error"), // set when Google refuses to refresh the token; cleared on next sign-in
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

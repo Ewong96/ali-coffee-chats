@@ -67,6 +67,12 @@ export default async function MemberPage() {
           Google Calendar isn&apos;t connected, so students can&apos;t book you yet. Sign out and sign in again, making sure to allow calendar access.
         </div>
       )}
+      {me.googleRefreshToken && me.googleTokenError && (
+        <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <b>Your Google Calendar connection has expired.</b> New bookings are still saved and emailed, but invites can&apos;t be added to your calendar
+          until you reconnect. Click <b>Sign out</b>, then sign in again with Google and allow calendar access.
+        </div>
+      )}
       {me.googleRefreshToken && profileIncomplete && (
         <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           Finish your profile below (name and a default meeting spot) so students know who they&apos;re meeting and where.
