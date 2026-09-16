@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { cancelBooking } from "@/app/actions/member";
+import { cancelBooking, retryAllCalendarInvites, retryCalendarInvite } from "@/app/actions/member";
 import { fmtDateTime, tzAbbrev } from "@/lib/time";
 import { yearLabel } from "@/lib/config";
 
@@ -23,11 +23,37 @@ export default function UpcomingChats({ bookings, showHost = false }: { bookings
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const failedCount = bookings.filter((b) => b.calendarError).length;
 
   if (!bookings.length) return <p className="text-sm text-stone-500">No upcoming chats yet. Once students book, they&apos;ll show up here.</p>;
 
   return (
     <div>
+      {failedCount > 0 && !showHost && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          <span>
+            {failedCount} chat{failedCount === 1 ? "" : "s"} never got a calendar invite. If you&apos;ve reconnected Google, send them now.
+          </span>
+          <button
+            className="btn-primary"
+            disabled={pending}
+            onClick={() => {
+              setError(null);
+              setNotice(null);
+              start(async () => {
+                const res = await retryAllCalendarInvites();
+                if (res.sent) setNotice(`Sent ${res.sent} invite${res.sent === 1 ? "" : "s"}.`);
+                if (!res.ok) setError(res.error ?? "Some invites failed.");
+                router.refresh();
+              });
+            }}
+          >
+            {pending ? "Sending…" : `Send all ${failedCount} invite${failedCount === 1 ? "" : "s"}`}
+          </button>
+        </div>
+      )}
+      {notice && <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{notice}</p>}
       {error && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
       <ul className="divide-y divide-stone-100">
         {bookings.map((b) => {
@@ -50,10 +76,32 @@ export default function UpcomingChats({ bookings, showHost = false }: { bookings
                 {b.studentNotes && <div className="mt-1 text-sm italic text-stone-600">“{b.studentNotes}”</div>}
                 {b.calendarError && (
                   <div className="mt-1 rounded bg-red-50 px-2 py-1 text-xs text-red-700">
-                    Calendar invite failed: {b.calendarError}. Please email the student directly.
+                    No calendar invite was sent for this chat.{" "}
+                    {/expired or revoked|invalid_grant/i.test(b.calendarError)
+                      ? "The host's Google connection had expired; reconnect, then send the invite."
+                      : b.calendarError}
                   </div>
                 )}
               </div>
+              <div className="flex gap-2">
+              {b.calendarError && (
+                <button
+                  className="btn-primary"
+                  disabled={pending}
+                  onClick={() => {
+                    setError(null);
+                    setNotice(null);
+                    start(async () => {
+                      const res = await retryCalendarInvite(b.id);
+                      if (!res.ok) setError(res.error ?? "Could not send the invite.");
+                      else setNotice(`Invite sent to ${b.studentName}.`);
+                      router.refresh();
+                    });
+                  }}
+                >
+                  Send invite now
+                </button>
+              )}
               <button
                 className="btn-danger"
                 disabled={pending}
@@ -69,6 +117,7 @@ export default function UpcomingChats({ bookings, showHost = false }: { bookings
               >
                 Cancel
               </button>
+              </div>
             </li>
           );
         })}

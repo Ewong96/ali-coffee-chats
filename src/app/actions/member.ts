@@ -1,11 +1,12 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { currentMember } from "@/auth";
 import { getDb, schema } from "@/db";
 import { deleteEvent } from "@/lib/google";
+import { syncBookingToCalendar } from "@/lib/calendarSync";
 import { ALL_YEARS, DAY_END_HOUR, DAY_START_HOUR, SLOT_MINUTES, TIMEZONE, isClassYear } from "@/lib/config";
 import { DateTime } from "luxon";
 
@@ -189,4 +190,39 @@ export async function logManualChat(input: ManualChatInput): Promise<{ ok: boole
   revalidatePath("/member");
   revalidatePath("/admin");
   return { ok: true };
+}
+
+/** Try again to create the calendar event for a booking whose invite failed. */
+export async function retryCalendarInvite(bookingId: string): Promise<{ ok: boolean; error?: string }> {
+  const me = await requireMember();
+  const db = await getDb();
+  const b = await db.query.bookings.findFirst({ where: eq(schema.bookings.id, bookingId) });
+  if (!b || (b.memberId !== me.id && !me.isAdmin)) return { ok: false, error: "Not found" };
+  if (b.status !== "confirmed") return { ok: false, error: "This chat was cancelled." };
+  const host = b.memberId === me.id ? me : await db.query.members.findFirst({ where: eq(schema.members.id, b.memberId) });
+  if (!host) return { ok: false, error: "Host not found" };
+  const res = await syncBookingToCalendar(b, host);
+  revalidatePath("/member");
+  revalidatePath("/admin");
+  return res.ok ? { ok: true } : { ok: false, error: res.error };
+}
+
+/** Retry every failed upcoming invite for the signed-in member. Returns counts. */
+export async function retryAllCalendarInvites(): Promise<{ ok: boolean; sent: number; failed: number; error?: string }> {
+  const me = await requireMember();
+  const db = await getDb();
+  const failed = await db.query.bookings.findMany({
+    where: and(eq(schema.bookings.memberId, me.id), eq(schema.bookings.status, "confirmed"), isNull(schema.bookings.googleEventId)),
+  });
+  let sent = 0;
+  let bad = 0;
+  for (const b of failed) {
+    if (b.endsAt < new Date() || b.source === "manual") continue;
+    const res = await syncBookingToCalendar(b, me);
+    if (res.ok) sent++;
+    else bad++;
+  }
+  revalidatePath("/member");
+  revalidatePath("/admin");
+  return { ok: bad === 0, sent, failed: bad, error: bad ? "Some invites still failed. If you just reconnected Google, reload and try again." : undefined };
 }

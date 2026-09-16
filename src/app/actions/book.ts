@@ -5,7 +5,7 @@ import { after } from "next/server";
 import { and, count, eq, gt, inArray } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { candidatesForSlot, locationFor } from "@/lib/availability";
-import { GoogleAuthError, createEvent, markGoogleDisconnected } from "@/lib/google";
+import { syncBookingToCalendar } from "@/lib/calendarSync";
 import { sendEmail } from "@/lib/email";
 import { CLUB_NAME, MAX_ACTIVE_BOOKINGS_PER_STUDENT, SLOT_MINUTES, isClassYear, yearLabel, type MeetingMode } from "@/lib/config";
 import { bookingWindow, fmtDateLong, fmtDateTime, fmtTime, fmtWindow, tzAbbrev } from "@/lib/time";
@@ -92,48 +92,10 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
     }
 
     // Create the calendar event on the member's Google Calendar; Google emails the student an invite.
-    const useMeet = cand.mode === "virtual" && !member.virtualLink;
-    let calendarFailed = false;
-    let finalLocation = location;
-    try {
-      const modeLabel = cand.mode === "in_person" ? `In person — ${location}` : useMeet ? "Virtual — Google Meet (link in this invite)" : `Virtual — ${location}`;
-      const description = [
-        `${CLUB_NAME} coffee chat between ${name} and ${member.name || member.email}${member.title ? ` (${member.title})` : ""}.`,
-        "",
-        modeLabel,
-        `When: ${fmtDateTime(startsAt)} ${tzAbbrev(startsAt)}`,
-        "",
-        notes ? `What ${name} would like to talk about:\n${notes}` : "",
-        "",
-        `Student: ${name} <${email}> · ${yearLabel(year)}`,
-        `Host: ${member.name || member.email} <${member.email}>`,
-        "",
-        `Need to reschedule? Reply to this invite so your host can cancel and you can rebook.`,
-      ]
-        .join("\n")
-        .replace(/\n{3,}/g, "\n\n");
-      const ev = await createEvent({
-        refreshToken: member.googleRefreshToken,
-        summary: `${CLUB_NAME} Coffee Chat: ${name} & ${member.name || member.email}`,
-        description,
-        start: startsAt,
-        end: endsAt,
-        attendees: [{ email, displayName: name }],
-        location: useMeet ? undefined : location,
-        createMeet: useMeet,
-        requestId: id,
-      });
-      finalLocation = useMeet && ev.hangoutLink ? ev.hangoutLink : location;
-      await db.update(schema.bookings).set({ googleEventId: ev.id, location: finalLocation }).where(eq(schema.bookings.id, id));
-    } catch (err) {
-      console.error("Calendar event failed", err);
-      calendarFailed = true;
-      if (err instanceof GoogleAuthError) await markGoogleDisconnected(member.id, err.message).catch(() => {});
-      await db
-        .update(schema.bookings)
-        .set({ calendarError: err instanceof Error ? err.message.slice(0, 500) : "unknown error" })
-        .where(eq(schema.bookings.id, id));
-    }
+    const inserted = await db.query.bookings.findFirst({ where: eq(schema.bookings.id, id) });
+    const sync = inserted ? await syncBookingToCalendar(inserted, member) : { ok: false as const, error: "missing booking" };
+    const calendarFailed = !sync.ok;
+    const finalLocation = sync.ok ? sync.location : location;
 
     // Email the host (and the student, if the calendar invite could not be sent) after the response is returned.
     const whenLine = `${fmtDateLong(startsAt)}, ${fmtTime(startsAt)} – ${fmtTime(endsAt)} ${tzAbbrev(startsAt)}`;
